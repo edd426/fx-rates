@@ -1,0 +1,39 @@
+name: update-rates
+
+on:
+  schedule:
+    # ECB publishes ~16:00 CET; Frankfurter follows within minutes.
+    - cron: "30 15 * * 1-5"
+    # Daily catch-up in case a run was skipped.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-rates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python fetch_rates.py
+      # Each new business day's rate is a commit, which also keeps the
+      # schedule alive (GitHub pauses schedules in repos idle for 60 days).
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rates.json
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "rates: $(date -u +%F)"
+            git push
+          fi
